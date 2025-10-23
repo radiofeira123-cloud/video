@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Vídeo Zoom-Out Mosaico</title>
+  <title>Vídeo Zoom-Out Mosaico 16K</title>
   <style>
     :root{--bg:#0f1724;--accent:#06b6d4;--muted:#94a3b8;color-scheme:dark}
     body{margin:0;min-height:100vh;background:linear-gradient(180deg,#071025,#0f1724);color:#e6eef6;font-family:Inter,system-ui,Arial;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -19,16 +19,16 @@
 </head>
 <body>
   <div class="card">
-    <h1>Gerador de Vídeo com Efeito Zoom-Out</h1>
-    <p>Envie suas fotos (até centenas). O vídeo começa com uma foto e vai afastando até mostrar todas em mosaico 16:9.</p>
+    <h1>Gerador de Vídeo Zoom-Out 16K</h1>
+    <p>Envie suas fotos. O vídeo começa com uma foto aleatória central e vai zoom-out até mostrar todas em mosaico 16K horizontal.</p>
     <div style="text-align:center">
       <label for="files" class="btn">Selecionar Fotos</label>
       <input id="files" type="file" accept="image/*" multiple>
       <button id="generate" class="btn">Gerar Vídeo (MP4)</button>
     </div>
-    <canvas id="canvas" width="1280" height="720"></canvas>
+    <canvas id="canvas" width="15360" height="8640"></canvas>
     <div id="log"></div>
-    <p class="small">A conversão para MP4 usa ffmpeg.wasm, pode demorar dependendo da quantidade de fotos.</p>
+    <p class="small">A conversão para MP4 usa ffmpeg.wasm com alta taxa de bits para máxima qualidade. Pode demorar dependendo do navegador e da quantidade de fotos.</p>
   </div>
 
   <script>
@@ -63,9 +63,8 @@
       if(images.length===0){ alert('Selecione as fotos primeiro.'); return; }
       generateBtn.disabled = true;
       clearLog();
-      log('Gerando vídeo zoom-out com ' + images.length + ' fotos...');
 
-      const width = 1280, height = 720, fps = 30, duration = 20;
+      const width = 15360, height = 8640, fps = 30, duration = 20;
       canvas.width = width; canvas.height = height;
       const ctx = canvas.getContext('2d');
       const totalFrames = duration * fps;
@@ -81,9 +80,16 @@
       bigCanvas.height = rows * cellH;
       const bctx = bigCanvas.getContext('2d');
 
-      for(let i=0;i<images.length;i++){
+      // Escolhe foto central aleatória
+      const centralIndex = Math.floor(Math.random() * images.length);
+      const centralImage = images[centralIndex];
+      const others = images.slice();
+      others.splice(centralIndex,1);
+      const orderedImages = [centralImage, ...others];
+
+      for(let i=0;i<orderedImages.length;i++){
         const c = i % cols; const r = Math.floor(i/cols);
-        bctx.drawImage(images[i], c*cellW, r*cellH, cellW, cellH);
+        bctx.drawImage(orderedImages[i], c*cellW, r*cellH, cellW, cellH);
       }
 
       const stream = canvas.captureStream(fps);
@@ -94,7 +100,7 @@
 
       for(let f=0; f<totalFrames; f++){
         const t = f/totalFrames;
-        const zoom = 1 / (1 + 14*t); // controla o zoom-out
+        const zoom = 1 / (1 + 14*t); // controla zoom-out a partir da foto central
         const viewW = width * zoom;
         const viewH = height * zoom;
         const cx = bigCanvas.width/2;
@@ -108,7 +114,7 @@
       recorder.stop();
       await new Promise(r=>recorder.onstop=r);
       const blob = new Blob(chunks,{type:'video/webm'});
-      log('WebM gerado. Convertendo para MP4...');
+      log('WebM gerado. Convertendo para MP4 com alta qualidade...');
       await convertToMP4(blob);
       generateBtn.disabled = false;
     });
@@ -127,11 +133,12 @@
       await ffmpeg.load();
       const data=await fetchFile(webmBlob);
       ffmpeg.FS('writeFile','input.webm',data);
-      await ffmpeg.run('-i','input.webm','-c:v','libx264','-crf','23','out.mp4');
+      // taxa de bits alta para máxima qualidade
+      await ffmpeg.run('-i','input.webm','-c:v','libx264','-crf','18','-preset','slow','-b:v','50M','out.mp4');
       const out=ffmpeg.FS('readFile','out.mp4');
       const mp4Blob=new Blob([out.buffer],{type:'video/mp4'});
-      const a=document.createElement('a'); a.href=URL.createObjectURL(mp4Blob); a.download='zoomout.mp4'; a.click();
-      log('MP4 pronto!');
+      const a=document.createElement('a'); a.href=URL.createObjectURL(mp4Blob); a.download='zoomout_16k.mp4'; a.click();
+      log('MP4 pronto com alta qualidade!');
     }
   </script>
 </body>
