@@ -1,145 +1,148 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Vídeo Zoom-Out Mosaico 16K</title>
-  <style>
-    :root{--bg:#0f1724;--accent:#06b6d4;--muted:#94a3b8;color-scheme:dark}
-    body{margin:0;min-height:100vh;background:linear-gradient(180deg,#071025,#0f1724);color:#e6eef6;font-family:Inter,system-ui,Arial;display:flex;align-items:center;justify-content:center;padding:20px}
-    .card{background:rgba(255,255,255,0.05);padding:20px;border-radius:14px;box-shadow:0 6px 18px rgba(2,6,23,0.6);max-width:900px;width:100%}
-    h1{font-size:20px;margin:0 0 10px 0;text-align:center}
-    p{font-size:14px;color:var(--muted);text-align:center;margin-bottom:20px}
-    input[type=file]{display:none}
-    .btn{background:linear-gradient(90deg,var(--accent),#7c3aed);border:none;padding:10px 18px;border-radius:10px;color:#021124;cursor:pointer;font-weight:600;display:inline-block;margin-bottom:10px}
-    #canvas{display:block;margin:10px auto;background:#000;border-radius:10px;max-width:100%}
-    #log{font-family:monospace;font-size:13px;color:var(--muted);height:120px;overflow:auto;padding:8px;background:rgba(255,255,255,0.02);border-radius:8px}
-    .small{text-align:center;font-size:13px;color:var(--muted)}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Vídeo Zoom-Out Mosaico 4K</title>
+<style>
+  :root{--bg:#0f1724;--accent:#06b6d4;--muted:#94a3b8;color-scheme:dark}
+  body{margin:0;min-height:100vh;background:linear-gradient(180deg,#071025,#0f1724);color:#e6eef6;font-family:Inter,system-ui,Arial;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:rgba(255,255,255,0.05);padding:20px;border-radius:14px;box-shadow:0 6px 18px rgba(2,6,23,0.6);max-width:900px;width:100%}
+  h1{font-size:20px;margin:0 0 10px 0;text-align:center}
+  p{font-size:14px;color:var(--muted);text-align:center;margin-bottom:20px}
+  input[type=file]{display:none}
+  .btn{background:linear-gradient(90deg,var(--accent),#7c3aed);border:none;padding:10px 18px;border-radius:10px;color:#021124;cursor:pointer;font-weight:600;display:inline-block;margin-bottom:10px}
+  #canvas{display:block;margin:10px auto;background:#000;border-radius:10px;max-width:100%}
+  #log{font-family:monospace;font-size:13px;color:var(--muted);height:120px;overflow:auto;padding:8px;background:rgba(255,255,255,0.02);border-radius:8px}
+  .small{text-align:center;font-size:13px;color:var(--muted)}
+</style>
 </head>
 <body>
-  <div class="card">
-    <h1>Gerador de Vídeo Zoom-Out 16K</h1>
-    <p>Envie suas fotos. O vídeo começa com uma foto aleatória central e vai zoom-out até mostrar todas em mosaico 16K horizontal.</p>
-    <div style="text-align:center">
-      <label for="files" class="btn">Selecionar Fotos</label>
-      <input id="files" type="file" accept="image/*" multiple>
-      <button id="generate" class="btn">Gerar Vídeo (MP4)</button>
-    </div>
-    <canvas id="canvas" width="15360" height="8640"></canvas>
-    <div id="log"></div>
-    <p class="small">A conversão para MP4 usa ffmpeg.wasm com alta taxa de bits para máxima qualidade. Pode demorar dependendo do navegador e da quantidade de fotos.</p>
+<div class="card">
+  <h1>Gerador de Vídeo Zoom-Out 4K</h1>
+  <p>Envie suas fotos. O vídeo começa com uma foto aleatória central e vai zoom-out até mostrar todas em mosaico 4K horizontal.</p>
+  <div style="text-align:center">
+    <label for="files" class="btn">Selecionar Fotos</label>
+    <input id="files" type="file" accept="image/*" multiple>
+    <button id="generate" class="btn">Gerar Vídeo (MP4)</button>
   </div>
+  <canvas id="canvas" width="3840" height="2160"></canvas>
+  <div id="log"></div>
+  <p class="small">A conversão para MP4 usa ffmpeg.wasm com alta taxa de bits para máxima qualidade.</p>
+</div>
+<script>
+const filesInput = document.getElementById('files');
+const generateBtn = document.getElementById('generate');
+const canvas = document.getElementById('canvas');
+const logEl = document.getElementById('log');
+let images = [];
 
-  <script>
-    const filesInput = document.getElementById('files');
-    const generateBtn = document.getElementById('generate');
-    const canvas = document.getElementById('canvas');
-    const logEl = document.getElementById('log');
+function log(msg){ logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+function clearLog(){ logEl.textContent = ''; }
 
-    let images = [];
+filesInput.addEventListener('change', async (ev)=>{
+  clearLog();
+  const list = Array.from(ev.target.files).filter(f=>f.type.startsWith('image/'));
+  log('Carregando ' + list.length + ' imagens...');
+  images = [];
+  for(const f of list){
+    const url = URL.createObjectURL(f);
+    const img = await loadImage(url);
+    images.push(img);
+  }
+  log('Todas as imagens carregadas ('+images.length+')');
+});
 
-    function log(msg){ logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
-    function clearLog(){ logEl.textContent = ''; }
+function loadImage(src){
+  return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; i.crossOrigin='anonymous'; });
+}
 
-    filesInput.addEventListener('change', async (ev)=>{
-      clearLog();
-      const list = Array.from(ev.target.files).filter(f=>f.type.startsWith('image/'));
-      log('Carregando ' + list.length + ' imagens...');
-      images = [];
-      for(const f of list){
-        const url = URL.createObjectURL(f);
-        const img = await loadImage(url);
-        images.push(img);
-      }
-      log('Todas as imagens carregadas ('+images.length+')');
-    });
+generateBtn.addEventListener('click', async()=>{
+  if(images.length===0){ alert('Selecione as fotos primeiro.'); return; }
+  generateBtn.disabled = true;
+  clearLog();
+  log('Gerando vídeo zoom-out com ' + images.length + ' fotos...');
 
-    function loadImage(src){
-      return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; i.crossOrigin='anonymous'; });
-    }
+  const width = 3840, height = 2160, fps = 30, duration = 20;
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const totalFrames = duration * fps;
 
-    generateBtn.addEventListener('click', async()=>{
-      if(images.length===0){ alert('Selecione as fotos primeiro.'); return; }
-      generateBtn.disabled = true;
-      clearLog();
+  const cols = Math.ceil(Math.sqrt(images.length));
+  const rows = Math.ceil(images.length / cols);
+  const cellW = width / cols;
+  const cellH = height / rows;
 
-      const width = 15360, height = 8640, fps = 30, duration = 20;
-      canvas.width = width; canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      const totalFrames = duration * fps;
+  const bigCanvas = document.createElement('canvas');
+  bigCanvas.width = cols * cellW;
+  bigCanvas.height = rows * cellH;
+  const bctx = bigCanvas.getContext('2d');
 
-      const cols = Math.ceil(Math.sqrt(images.length));
-      const rows = Math.ceil(images.length / cols);
+  // Escolhe foto central aleatória
+  const centralIndex = Math.floor(Math.random() * images.length);
+  const centralImage = images[centralIndex];
+  const others = images.slice();
+  others.splice(centralIndex,1);
+  const orderedImages = [centralImage, ...others];
 
-      const cellW = width / cols;
-      const cellH = height / rows;
+  // Posiciona foto central no meio do mosaico
+  const centerCol = Math.floor(cols/2);
+  const centerRow = Math.floor(rows/2);
+  orderedImages.forEach((img,i)=>{
+    let c, r;
+    if(i===0){ c=centerCol; r=centerRow; }
+    else{ const idx = i-1; c = idx % cols; r = Math.floor(idx/cols); if(c===centerCol && r===centerRow){ c++; } }
+    bctx.drawImage(img, c*cellW, r*cellH, cellW, cellH);
+  });
 
-      const bigCanvas = document.createElement('canvas');
-      bigCanvas.width = cols * cellW;
-      bigCanvas.height = rows * cellH;
-      const bctx = bigCanvas.getContext('2d');
+  const stream = canvas.captureStream(fps);
+  const recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9'});
+  const chunks=[];
+  recorder.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
+  recorder.start();
 
-      // Escolhe foto central aleatória
-      const centralIndex = Math.floor(Math.random() * images.length);
-      const centralImage = images[centralIndex];
-      const others = images.slice();
-      others.splice(centralIndex,1);
-      const orderedImages = [centralImage, ...others];
+  // Zoom-out partindo da foto central
+  for(let f=0; f<totalFrames; f++){
+    const t = f/totalFrames;
+    const zoom = 1 / (1 + 4*t); // controla zoom-out gradual
+    const cx = centerCol*cellW + cellW/2;
+    const cy = centerRow*cellH + cellH/2;
+    const viewW = width * zoom;
+    const viewH = height * zoom;
 
-      for(let i=0;i<orderedImages.length;i++){
-        const c = i % cols; const r = Math.floor(i/cols);
-        bctx.drawImage(orderedImages[i], c*cellW, r*cellH, cellW, cellH);
-      }
+    ctx.fillStyle='#000'; ctx.fillRect(0,0,width,height);
+    ctx.drawImage(bigCanvas, cx - viewW/2, cy - viewH/2, viewW, viewH, 0, 0, width, height);
+    await wait(1000/fps);
+  }
 
-      const stream = canvas.captureStream(fps);
-      const recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9'});
-      const chunks=[];
-      recorder.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
-      recorder.start();
+  recorder.stop();
+  await new Promise(r=>recorder.onstop=r);
+  const blob = new Blob(chunks,{type:'video/webm'});
+  log('WebM gerado. Convertendo para MP4 com alta qualidade...');
+  await convertToMP4(blob);
+  generateBtn.disabled = false;
+});
 
-      for(let f=0; f<totalFrames; f++){
-        const t = f/totalFrames;
-        const zoom = 1 / (1 + 14*t); // controla zoom-out a partir da foto central
-        const viewW = width * zoom;
-        const viewH = height * zoom;
-        const cx = bigCanvas.width/2;
-        const cy = bigCanvas.height/2;
+function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
-        ctx.fillStyle='#000'; ctx.fillRect(0,0,width,height);
-        ctx.drawImage(bigCanvas, cx - viewW/2, cy - viewH/2, viewW, viewH, 0, 0, width, height);
-        await wait(1000/fps);
-      }
-
-      recorder.stop();
-      await new Promise(r=>recorder.onstop=r);
-      const blob = new Blob(chunks,{type:'video/webm'});
-      log('WebM gerado. Convertendo para MP4 com alta qualidade...');
-      await convertToMP4(blob);
-      generateBtn.disabled = false;
-    });
-
-    function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
-
-    async function convertToMP4(webmBlob){
-      if(!window.createFFmpeg){
-        const s=document.createElement('script');
-        s.src='https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js';
-        document.head.appendChild(s);
-        await new Promise(res=>s.onload=res);
-      }
-      const {createFFmpeg, fetchFile}=window.FFmpeg;
-      const ffmpeg=createFFmpeg({log:true});
-      await ffmpeg.load();
-      const data=await fetchFile(webmBlob);
-      ffmpeg.FS('writeFile','input.webm',data);
-      // taxa de bits alta para máxima qualidade
-      await ffmpeg.run('-i','input.webm','-c:v','libx264','-crf','18','-preset','slow','-b:v','50M','out.mp4');
-      const out=ffmpeg.FS('readFile','out.mp4');
-      const mp4Blob=new Blob([out.buffer],{type:'video/mp4'});
-      const a=document.createElement('a'); a.href=URL.createObjectURL(mp4Blob); a.download='zoomout_16k.mp4'; a.click();
-      log('MP4 pronto com alta qualidade!');
-    }
-  </script>
+async function convertToMP4(webmBlob){
+  if(!window.createFFmpeg){
+    const s=document.createElement('script');
+    s.src='https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js';
+    document.head.appendChild(s);
+    await new Promise(res=>s.onload=res);
+  }
+  const {createFFmpeg, fetchFile}=window.FFmpeg;
+  const ffmpeg=createFFmpeg({log:true});
+  await ffmpeg.load();
+  const data=await fetchFile(webmBlob);
+  ffmpeg.FS('writeFile','input.webm',data);
+  await ffmpeg.run('-i','input.webm','-c:v','libx264','-crf','18','-preset','slow','-b:v','50M','out.mp4');
+  const out=ffmpeg.FS('readFile','out.mp4');
+  const mp4Blob=new Blob([out.buffer],{type:'video/mp4'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(mp4Blob); a.download='zoomout_4k.mp4'; a.click();
+  log('MP4 pronto com alta qualidade!');
+}
+</script>
 </body>
 </html>
