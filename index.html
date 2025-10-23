@@ -24,11 +24,11 @@
   <div style="text-align:center">
     <label for="files" class="btn">Selecionar Fotos</label>
     <input id="files" type="file" accept="image/*" multiple>
-    <button id="generate" class="btn">Gerar Vídeo (MP4)</button>
+    <button id="generate" class="btn">Gerar Vídeo (WebM)</button>
   </div>
   <canvas id="canvas" width="3840" height="2160"></canvas>
   <div id="log"></div>
-  <p class="small">A conversão para MP4 usa ffmpeg.wasm com alta taxa de bits para máxima qualidade.</p>
+  <p class="small">O vídeo será exportado em WebM, que pode ser convertido para MP4 localmente com FFmpeg.</p>
 </div>
 <script>
 const filesInput = document.getElementById('files');
@@ -99,12 +99,16 @@ generateBtn.addEventListener('click', async()=>{
   const recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9'});
   const chunks=[];
   recorder.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
+  recorder.onstop = ()=>{
+    const blob = new Blob(chunks,{type:'video/webm'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zoomout_4k.webm'; a.click();
+    log('Vídeo WebM pronto!');
+  };
   recorder.start();
 
-  // Zoom-out partindo da foto central
   for(let f=0; f<totalFrames; f++){
     const t = f/totalFrames;
-    const zoom = 1 / (1 + 4*t); // controla zoom-out gradual
+    const zoom = 1 / (1 + 4*t);
     const cx = centerCol*cellW + cellW/2;
     const cy = centerRow*cellH + cellH/2;
     const viewW = width * zoom;
@@ -116,33 +120,10 @@ generateBtn.addEventListener('click', async()=>{
   }
 
   recorder.stop();
-  await new Promise(r=>recorder.onstop=r);
-  const blob = new Blob(chunks,{type:'video/webm'});
-  log('WebM gerado. Convertendo para MP4 com alta qualidade...');
-  await convertToMP4(blob);
   generateBtn.disabled = false;
 });
 
 function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
-
-async function convertToMP4(webmBlob){
-  if(!window.createFFmpeg){
-    const s=document.createElement('script');
-    s.src='https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js';
-    document.head.appendChild(s);
-    await new Promise(res=>s.onload=res);
-  }
-  const {createFFmpeg, fetchFile}=window.FFmpeg;
-  const ffmpeg=createFFmpeg({log:true});
-  await ffmpeg.load();
-  const data=await fetchFile(webmBlob);
-  ffmpeg.FS('writeFile','input.webm',data);
-  await ffmpeg.run('-i','input.webm','-c:v','libx264','-crf','18','-preset','slow','-b:v','50M','out.mp4');
-  const out=ffmpeg.FS('readFile','out.mp4');
-  const mp4Blob=new Blob([out.buffer],{type:'video/mp4'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(mp4Blob); a.download='zoomout_4k.mp4'; a.click();
-  log('MP4 pronto com alta qualidade!');
-}
 </script>
 </body>
 </html>
