@@ -97,7 +97,7 @@ async function generateVideo(){
   });
 
   const stream = canvas.captureStream(fps);
-  const recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9', videoBitsPerSecond: 50000000});
+  const recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9', videoBitsPerSecond: 80000000});
   const chunks = [];
   recorder.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
   recorder.onstop = ()=>{
@@ -109,11 +109,13 @@ async function generateVideo(){
   recorder.start();
 
   let frame = 0;
+  const initialZoom = 10; // começa ampliado na foto central
+  const finalZoom = 1;    // termina mostrando todo o mosaico
+
   function drawFrame(){
     if(frame >= totalFrames){ recorder.stop(); return; }
     const t = frame / totalFrames;
-    const maxZoom = Math.max(bigCanvas.width/width, bigCanvas.height/height);
-    const zoom = 1 + t * (maxZoom - 1); // linear zoom-out
+    const zoom = initialZoom - (initialZoom - finalZoom) * t; // linear zoom-out
 
     const cx = centerCol*cellW + cellW/2;
     const cy = centerRow*cellH + cellH/2;
