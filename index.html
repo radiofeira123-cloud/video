@@ -58,6 +58,26 @@ function loadImage(src){
   return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; i.crossOrigin='anonymous'; });
 }
 
+// Função que desenha a imagem cobrindo o tile (cover)
+function drawCover(ctx, img, x, y, w, h){
+  const arImg = img.width / img.height;
+  const arTile = w / h;
+  let dw = w, dh = h, sx=0, sy=0, sw=img.width, sh=img.height;
+  if(arImg > arTile){ // imagem mais larga -> cortar sides
+    dh = h; dw = Math.round(h * arImg);
+    sx = Math.floor((dw - w)/2 / dw * img.width);
+    sw = Math.floor(img.width - sx*2);
+    sh = img.height;
+    ctx.drawImage(img, sx, 0, sw, sh, x, y, w, h);
+  } else { // imagem mais alta -> cortar top/bottom
+    dw = w; dh = Math.round(w / arImg);
+    sy = Math.floor((dh - h)/2 / dh * img.height);
+    sh = Math.floor(img.height - sy*2);
+    sw = img.width;
+    ctx.drawImage(img, 0, sy, sw, sh, x, y, w, h);
+  }
+}
+
 generateBtn.addEventListener('click', ()=>{
   if(images.length===0){ alert('Selecione as fotos primeiro.'); return; }
   generateBtn.disabled = true;
@@ -72,29 +92,41 @@ async function generateVideo(){
 
   const cols = Math.ceil(Math.sqrt(images.length));
   const rows = Math.ceil(images.length / cols);
-  const cellW = width / cols;
-  const cellH = height / rows;
+
+  // limita o bigCanvas para não explodir a memória
+  const MAX_BIG_DIM = 16384; // limite seguro na maioria dos navegadores
+  let tileSize = Math.floor(Math.min(1024, Math.floor(MAX_BIG_DIM / Math.max(cols, rows))));
+  tileSize = Math.max(tileSize, 64); // mínimo
+
+  const bigW = cols * tileSize;
+  const bigH = rows * tileSize;
 
   const bigCanvas = document.createElement('canvas');
-  bigCanvas.width = cols * cellW;
-  bigCanvas.height = rows * cellH;
+  bigCanvas.width = bigW;
+  bigCanvas.height = bigH;
   const bctx = bigCanvas.getContext('2d');
+  bctx.fillStyle = '#000'; bctx.fillRect(0,0,bigW,bigH);
 
-  // Ordenar imagens: primeira foto será central
+  // order: primeira imagem é central
   const centralImage = images[0];
   const others = images.slice(1);
-  const orderedImages = [centralImage, ...others];
+  const ordered = [centralImage, ...others];
 
   const centerCol = Math.floor(cols/2);
   const centerRow = Math.floor(rows/2);
 
-  // Posicionar todas as imagens no bigCanvas
-  orderedImages.forEach((img,i)=>{
+  ordered.forEach((img,i)=>{
     let c,r;
     if(i===0){ c=centerCol; r=centerRow; }
     else{ const idx=i-1; c = idx % cols; r = Math.floor(idx/cols); if(c===centerCol && r===centerRow){ c++; } }
-    bctx.drawImage(img, c*cellW, r*cellH, cellW, cellH);
+    drawCover(bctx, img, c*tileSize, r*tileSize, tileSize, tileSize);
   });
+
+  log('Mosaico preparado: ' + cols + 'x' + rows + ' tiles, tileSize=' + tileSize + ', bigCanvas=' + bigW + 'x' + bigH);
+
+  // centro da foto central
+  const cx = centerCol*tileSize + tileSize/2;
+  const cy = centerRow*tileSize + tileSize/2;
 
   const stream = canvas.captureStream(fps);
   const recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9', videoBitsPerSecond: 80000000});
@@ -109,28 +141,29 @@ async function generateVideo(){
   recorder.start();
 
   let frame = 0;
-  const initialZoom = 10; // começa com foto central full screen
-  const finalZoom = 1;    // termina mostrando o mosaico completo
-
   function drawFrame(){
     if(frame >= totalFrames){ recorder.stop(); return; }
-    const t = frame / totalFrames;
-    const zoom = initialZoom - (initialZoom - finalZoom) * t; // zoom-out linear
+    const t = frame / (totalFrames - 1);
 
-    const cx = centerCol*cellW + cellW/2;
-    const cy = centerRow*cellH + cellH/2;
-    const viewW = width * zoom;
-    const viewH = height * zoom;
+    // interpolar view width entre tileSize (começa mostrando a tile) e bigW (mosaico completo)
+    let viewW = tileSize + (bigW - tileSize) * t;
+    let viewH = viewW * (bigH / bigW); // mantém proporção do bigCanvas
 
-    ctx.fillStyle='#000'; ctx.fillRect(0,0,width,height);
+    // proteger caso viewH > bigH
+    if(viewH > bigH){ viewH = bigH; viewW = viewH * (bigW / bigH); }
 
-    if(zoom > 1){
-      // Primeiro, mostrar só a foto central ampliada
-      ctx.drawImage(centralImage, 0, 0, centralImage.width, centralImage.height, 0, 0, width, height);
-    } else {
-      // Quando o zoom chega a 1, mostrar todo o mosaico
-      ctx.drawImage(bigCanvas, cx - viewW/2, cy - viewH/2, viewW, viewH, 0, 0, width, height);
-    }
+    let sx = cx - viewW/2;
+    let sy = cy - viewH/2;
+    // clamp
+    if(sx < 0) sx = 0; if(sy < 0) sy = 0;
+    if(sx + viewW > bigW) sx = bigW - viewW;
+    if(sy + viewH > bigH) sy = bigH - viewH;
+
+    // desenha o pedaço do mosaico escalado para a tela
+    ctx.fillStyle = '#000'; ctx.fillRect(0,0,width,height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bigCanvas, sx, sy, viewW, viewH, 0, 0, width, height);
 
     frame++;
     requestAnimationFrame(drawFrame);
