@@ -20,7 +20,7 @@
 <body>
 <div class="card">
   <h1>Gerador de Vídeo Zoom-Out 4K</h1>
-  <p>Envie suas fotos. O vídeo começa com uma foto aleatória central e vai zoom-out até mostrar todas em mosaico 4K.</p>
+  <p>Envie suas fotos. O vídeo começa com a primeira foto em tela cheia e vai revelando as outras em mosaico durante o zoom-out.</p>
   <div style="text-align:center">
     <label for="files" class="btn">Selecionar Fotos</label>
     <input id="files" type="file" accept="image/*" multiple>
@@ -80,19 +80,19 @@ async function generateVideo(){
   bigCanvas.height = rows * cellH;
   const bctx = bigCanvas.getContext('2d');
 
-  const centralIndex = Math.floor(Math.random() * images.length);
-  const centralImage = images[centralIndex];
-  const others = images.slice();
-  others.splice(centralIndex,1);
+  // Ordenar imagens: primeira foto será central
+  const centralImage = images[0];
+  const others = images.slice(1);
   const orderedImages = [centralImage, ...others];
 
   const centerCol = Math.floor(cols/2);
   const centerRow = Math.floor(rows/2);
 
+  // Posicionar todas as imagens no bigCanvas
   orderedImages.forEach((img,i)=>{
     let c,r;
     if(i===0){ c=centerCol; r=centerRow; }
-    else{ const idx = i-1; c = idx % cols; r = Math.floor(idx/cols); if(c===centerCol && r===centerRow){ c++; } }
+    else{ const idx=i-1; c = idx % cols; r = Math.floor(idx/cols); if(c===centerCol && r===centerRow){ c++; } }
     bctx.drawImage(img, c*cellW, r*cellH, cellW, cellH);
   });
 
@@ -109,13 +109,13 @@ async function generateVideo(){
   recorder.start();
 
   let frame = 0;
-  const initialZoom = 10; // começa ampliado na foto central
-  const finalZoom = 1;    // termina mostrando todo o mosaico
+  const initialZoom = 10; // começa com foto central full screen
+  const finalZoom = 1;    // termina mostrando o mosaico completo
 
   function drawFrame(){
     if(frame >= totalFrames){ recorder.stop(); return; }
     const t = frame / totalFrames;
-    const zoom = initialZoom - (initialZoom - finalZoom) * t; // linear zoom-out
+    const zoom = initialZoom - (initialZoom - finalZoom) * t; // zoom-out linear
 
     const cx = centerCol*cellW + cellW/2;
     const cy = centerRow*cellH + cellH/2;
@@ -123,7 +123,14 @@ async function generateVideo(){
     const viewH = height * zoom;
 
     ctx.fillStyle='#000'; ctx.fillRect(0,0,width,height);
-    ctx.drawImage(bigCanvas, cx - viewW/2, cy - viewH/2, viewW, viewH, 0, 0, width, height);
+
+    if(zoom > 1){
+      // Primeiro, mostrar só a foto central ampliada
+      ctx.drawImage(centralImage, 0, 0, centralImage.width, centralImage.height, 0, 0, width, height);
+    } else {
+      // Quando o zoom chega a 1, mostrar todo o mosaico
+      ctx.drawImage(bigCanvas, cx - viewW/2, cy - viewH/2, viewW, viewH, 0, 0, width, height);
+    }
 
     frame++;
     requestAnimationFrame(drawFrame);
