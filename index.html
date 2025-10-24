@@ -7,32 +7,36 @@
 <style>
   :root{--bg:#0f1724;--accent:#06b6d4;--muted:#94a3b8;color-scheme:dark}
   body{margin:0;min-height:100vh;background:linear-gradient(180deg,#071025,#0f1724);color:#e6eef6;font-family:Inter,system-ui,Arial;display:flex;align-items:center;justify-content:center;padding:20px}
-  .card{background:rgba(255,255,255,0.05);padding:20px;border-radius:14px;box-shadow:0 6px 18px rgba(2,6,23,0.6);max-width:900px;width:100%}
+  .card{background:rgba(255,255,255,0.05);padding:20px;border-radius:14px;box-shadow:0 6px 18px rgba(2,6,23,0.6);max-width:960px;width:100%}
   h1{font-size:20px;margin:0 0 10px 0;text-align:center}
-  p{font-size:14px;color:var(--muted);text-align:center;margin-bottom:20px}
+  p{font-size:14px;color:var(--muted);text-align:center;margin-bottom:12px}
   input[type=file]{display:none}
-  .btn{background:linear-gradient(90deg,var(--accent),#7c3aed);border:none;padding:10px 18px;border-radius:10px;color:#021124;cursor:pointer;font-weight:600;display:inline-block;margin-bottom:10px}
+  .btn{background:linear-gradient(90deg,var(--accent),#7c3aed);border:none;padding:10px 14px;border-radius:10px;color:#021124;cursor:pointer;font-weight:600;display:inline-block;margin-bottom:10px}
   #canvas{display:block;margin:10px auto;background:#000;border-radius:10px;max-width:100%}
+  #controls{display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:8px}
   #log{font-family:monospace;font-size:13px;color:var(--muted);height:120px;overflow:auto;padding:8px;background:rgba(255,255,255,0.02);border-radius:8px}
-  .small{text-align:center;font-size:13px;color:var(--muted)}
+  label.small{font-size:13px;color:var(--muted)}
+  input[type=number]{width:90px;padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
 </style>
 </head>
 <body>
 <div class="card">
   <h1>Gerador de Vídeo Zoom-Out 4K</h1>
   <p>Envie suas fotos. O vídeo começa com a primeira foto em tela cheia e vai revelando as outras em mosaico durante o zoom-out.</p>
-  <div style="text-align:center">
+  <div id="controls">
     <label for="files" class="btn">Selecionar Fotos</label>
     <input id="files" type="file" accept="image/*" multiple>
     <button id="generate" class="btn">Gerar Vídeo (WebM)</button>
+    <div style="display:flex;flex-direction:column;align-items:center;"><label class="small">Duração (seg, máximo 30)</label><input id="duration" type="number" min="3" max="30" value="30"></div>
   </div>
   <canvas id="canvas" width="3840" height="2160"></canvas>
   <div id="log"></div>
-  <p class="small">O vídeo será exportado em WebM, que pode ser convertido para MP4 localmente com FFmpeg.</p>
+  <p class="small">Exporta direto em WebM. Se quiser MP4, converta localmente com FFmpeg.</p>
 </div>
 <script>
 const filesInput = document.getElementById('files');
 const generateBtn = document.getElementById('generate');
+const durationInput = document.getElementById('duration');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const logEl = document.getElementById('log');
@@ -58,60 +62,57 @@ function loadImage(src){
   return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; i.crossOrigin='anonymous'; });
 }
 
-// Função que desenha a imagem cobrindo o tile (cover)
 function drawCover(ctx, img, x, y, w, h){
   const arImg = img.width / img.height;
   const arTile = w / h;
-  let dw = w, dh = h, sx=0, sy=0, sw=img.width, sh=img.height;
-  if(arImg > arTile){ // imagem mais larga -> cortar sides
-    dh = h; dw = Math.round(h * arImg);
-    sx = Math.floor((dw - w)/2 / dw * img.width);
-    sw = Math.floor(img.width - sx*2);
-    sh = img.height;
-    ctx.drawImage(img, sx, 0, sw, sh, x, y, w, h);
-  } else { // imagem mais alta -> cortar top/bottom
-    dw = w; dh = Math.round(w / arImg);
-    sy = Math.floor((dh - h)/2 / dh * img.height);
-    sh = Math.floor(img.height - sy*2);
-    sw = img.width;
-    ctx.drawImage(img, 0, sy, sw, sh, x, y, w, h);
+  if(arImg > arTile){
+    // cortar sides
+    const scale = h / img.height;
+    const dw = img.width * scale;
+    const sx = Math.max(0, Math.floor((dw - w)/2 / scale));
+    ctx.drawImage(img, sx, 0, Math.floor(img.width - sx*2), img.height, x, y, w, h);
+  } else {
+    const scale = w / img.width;
+    const dh = img.height * scale;
+    const sy = Math.max(0, Math.floor((dh - h)/2 / scale));
+    ctx.drawImage(img, 0, sy, img.width, Math.floor(img.height - sy*2), x, y, w, h);
   }
 }
 
 generateBtn.addEventListener('click', ()=>{
   if(images.length===0){ alert('Selecione as fotos primeiro.'); return; }
+  const dur = Number(durationInput.value) || 30;
+  if(dur > 30){ alert('Duração máxima 30 segundos.'); durationInput.value = 30; return; }
   generateBtn.disabled = true;
   clearLog();
   log('Gerando vídeo zoom-out com ' + images.length + ' fotos...');
-  generateVideo();
+  generateVideo(Math.min(30, dur));
 });
 
-async function generateVideo(){
-  const width = 3840, height = 2160, fps = 30, duration = 20;
-  const totalFrames = duration * fps;
+async function generateVideo(durationSeconds){
+  const width = 3840, height = 2160, fps = 30; // fps usado só para MediaRecorder
+  const durationMs = durationSeconds * 1000;
 
   const cols = Math.ceil(Math.sqrt(images.length));
   const rows = Math.ceil(images.length / cols);
 
-  // limita o bigCanvas para não explodir a memória
-  const MAX_BIG_DIM = 16384; // limite seguro na maioria dos navegadores
+  // pick tile size to keep bigCanvas within safe limits
+  const MAX_BIG_DIM = 16384; // safe upper limit
   let tileSize = Math.floor(Math.min(1024, Math.floor(MAX_BIG_DIM / Math.max(cols, rows))));
-  tileSize = Math.max(tileSize, 64); // mínimo
+  tileSize = Math.max(tileSize, 64);
 
   const bigW = cols * tileSize;
   const bigH = rows * tileSize;
 
   const bigCanvas = document.createElement('canvas');
-  bigCanvas.width = bigW;
-  bigCanvas.height = bigH;
+  bigCanvas.width = bigW; bigCanvas.height = bigH;
   const bctx = bigCanvas.getContext('2d');
   bctx.fillStyle = '#000'; bctx.fillRect(0,0,bigW,bigH);
 
-  // order: primeira imagem é central
+  // first image is central (full-screen at start)
   const centralImage = images[0];
   const others = images.slice(1);
   const ordered = [centralImage, ...others];
-
   const centerCol = Math.floor(cols/2);
   const centerRow = Math.floor(rows/2);
 
@@ -124,51 +125,54 @@ async function generateVideo(){
 
   log('Mosaico preparado: ' + cols + 'x' + rows + ' tiles, tileSize=' + tileSize + ', bigCanvas=' + bigW + 'x' + bigH);
 
-  // centro da foto central
+  // center of central tile in bigCanvas coords
   const cx = centerCol*tileSize + tileSize/2;
   const cy = centerRow*tileSize + tileSize/2;
 
+  // prepare recorder
   const stream = canvas.captureStream(fps);
-  const recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9', videoBitsPerSecond: 80000000});
+  const options = { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 80000000 };
+  const recorder = new MediaRecorder(stream, options);
   const chunks = [];
-  recorder.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
+  recorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
   recorder.onstop = ()=>{
     const blob = new Blob(chunks,{type:'video/webm'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zoomout_4k.webm'; a.click();
-    log('Vídeo WebM pronto!');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'zoomout_4k.webm'; a.click();
+    log('Vídeo WebM pronto! Tamanho aproximado: ' + Math.round(blob.size/1024/1024) + ' MB');
     generateBtn.disabled = false;
   };
   recorder.start();
 
-  let frame = 0;
-  function drawFrame(){
-    if(frame >= totalFrames){ recorder.stop(); return; }
-    const t = frame / (totalFrames - 1);
+  // timing-based animation (smooth, respects requested duration)
+  const start = performance.now();
+  function frame(){
+    const now = performance.now();
+    const elapsed = now - start;
+    let t = Math.min(1, elapsed / durationMs); // 0..1
 
-    // interpolar view width entre tileSize (começa mostrando a tile) e bigW (mosaico completo)
-    let viewW = tileSize + (bigW - tileSize) * t;
-    let viewH = viewW * (bigH / bigW); // mantém proporção do bigCanvas
+    // viewW interpolates from tileSize (start showing central tile) to full bigW (show all)
+    const viewW = tileSize + (bigW - tileSize) * t;
+    const viewH = viewW * (bigH / bigW);
 
-    // proteger caso viewH > bigH
-    if(viewH > bigH){ viewH = bigH; viewW = viewH * (bigW / bigH); }
-
-    let sx = cx - viewW/2;
-    let sy = cy - viewH/2;
-    // clamp
+    // ensure we don't exceed big dims
+    let sx = cx - viewW/2; let sy = cy - viewH/2;
     if(sx < 0) sx = 0; if(sy < 0) sy = 0;
     if(sx + viewW > bigW) sx = bigW - viewW;
     if(sy + viewH > bigH) sy = bigH - viewH;
 
-    // desenha o pedaço do mosaico escalado para a tela
     ctx.fillStyle = '#000'; ctx.fillRect(0,0,width,height);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(bigCanvas, sx, sy, viewW, viewH, 0, 0, width, height);
 
-    frame++;
-    requestAnimationFrame(drawFrame);
+    if(t < 1){
+      requestAnimationFrame(frame);
+    } else {
+      // hold final frame a little to ensure recorder captures it
+      setTimeout(()=>recorder.stop(), 200);
+    }
   }
-  requestAnimationFrame(drawFrame);
+  requestAnimationFrame(frame);
 }
 </script>
 </body>
