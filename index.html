@@ -20,7 +20,7 @@
 <body>
 <div class="card">
   <h1>Gerador de Vídeo Zoom-Out 4K</h1>
-  <p>Envie suas fotos. O vídeo começa com uma foto aleatória central e vai zoom-out até mostrar todas em mosaico 4K horizontal.</p>
+  <p>Envie suas fotos. O vídeo começa com uma foto aleatória central e vai zoom-out até mostrar todas em mosaico 4K.</p>
   <div style="text-align:center">
     <label for="files" class="btn">Selecionar Fotos</label>
     <input id="files" type="file" accept="image/*" multiple>
@@ -34,6 +34,7 @@
 const filesInput = document.getElementById('files');
 const generateBtn = document.getElementById('generate');
 const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
 const logEl = document.getElementById('log');
 let images = [];
 
@@ -57,15 +58,16 @@ function loadImage(src){
   return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; i.crossOrigin='anonymous'; });
 }
 
-generateBtn.addEventListener('click', async()=>{
+generateBtn.addEventListener('click', ()=>{
   if(images.length===0){ alert('Selecione as fotos primeiro.'); return; }
   generateBtn.disabled = true;
   clearLog();
   log('Gerando vídeo zoom-out com ' + images.length + ' fotos...');
+  generateVideo();
+});
 
+async function generateVideo(){
   const width = 3840, height = 2160, fps = 30, duration = 20;
-  canvas.width = width; canvas.height = height;
-  const ctx = canvas.getContext('2d');
   const totalFrames = duration * fps;
 
   const cols = Math.ceil(Math.sqrt(images.length));
@@ -78,37 +80,41 @@ generateBtn.addEventListener('click', async()=>{
   bigCanvas.height = rows * cellH;
   const bctx = bigCanvas.getContext('2d');
 
-  // Escolhe foto central aleatória
   const centralIndex = Math.floor(Math.random() * images.length);
   const centralImage = images[centralIndex];
   const others = images.slice();
   others.splice(centralIndex,1);
   const orderedImages = [centralImage, ...others];
 
-  // Posiciona foto central no meio do mosaico
   const centerCol = Math.floor(cols/2);
   const centerRow = Math.floor(rows/2);
+
   orderedImages.forEach((img,i)=>{
-    let c, r;
+    let c,r;
     if(i===0){ c=centerCol; r=centerRow; }
     else{ const idx = i-1; c = idx % cols; r = Math.floor(idx/cols); if(c===centerCol && r===centerRow){ c++; } }
     bctx.drawImage(img, c*cellW, r*cellH, cellW, cellH);
   });
 
   const stream = canvas.captureStream(fps);
-  const recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9'});
-  const chunks=[];
+  const recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9', videoBitsPerSecond: 50000000});
+  const chunks = [];
   recorder.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
   recorder.onstop = ()=>{
     const blob = new Blob(chunks,{type:'video/webm'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zoomout_4k.webm'; a.click();
     log('Vídeo WebM pronto!');
+    generateBtn.disabled = false;
   };
   recorder.start();
 
-  for(let f=0; f<totalFrames; f++){
-    const t = f/totalFrames;
-    const zoom = 1 / (1 + 4*t);
+  let frame = 0;
+  function drawFrame(){
+    if(frame >= totalFrames){ recorder.stop(); return; }
+    const t = frame / totalFrames;
+    const maxZoom = Math.max(bigCanvas.width/width, bigCanvas.height/height);
+    const zoom = 1 + t * (maxZoom - 1); // linear zoom-out
+
     const cx = centerCol*cellW + cellW/2;
     const cy = centerRow*cellH + cellH/2;
     const viewW = width * zoom;
@@ -116,14 +122,12 @@ generateBtn.addEventListener('click', async()=>{
 
     ctx.fillStyle='#000'; ctx.fillRect(0,0,width,height);
     ctx.drawImage(bigCanvas, cx - viewW/2, cy - viewH/2, viewW, viewH, 0, 0, width, height);
-    await wait(1000/fps);
+
+    frame++;
+    requestAnimationFrame(drawFrame);
   }
-
-  recorder.stop();
-  generateBtn.disabled = false;
-});
-
-function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
+  requestAnimationFrame(drawFrame);
+}
 </script>
 </body>
 </html>
